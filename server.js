@@ -17,15 +17,55 @@ app.use(cors({
     credentials: true
 }));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => console.log(err));
+// MongoDB connection
+let cachedDb = null;
 
-// Routes
-app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/orders', orderRoutes);
+async function connectToDatabase() {
+    if (cachedDb) {
+        return cachedDb;
+    }
+    
+    try {
+        const db = await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 5000, // Timeout after 5s
+            socketTimeoutMS: 45000, // Close sockets after 45s
+        });
+        cachedDb = db;
+        console.log('Connected to MongoDB');
+        return db;
+    } catch (error) {
+        console.error('MongoDB connection error:', error);
+        throw error;
+    }
+}
+
+// Routes with database connection handling
+app.use('/api/users', async (req, res, next) => {
+    try {
+        await connectToDatabase();
+        next();
+    } catch (error) {
+        next(error);
+    }
+}, userRoutes);
+
+app.use('/api/products', async (req, res, next) => {
+    try {
+        await connectToDatabase();
+        next();
+    } catch (error) {
+        next(error);
+    }
+}, productRoutes);
+
+app.use('/api/orders', async (req, res, next) => {
+    try {
+        await connectToDatabase();
+        next();
+    } catch (error) {
+        next(error);
+    }
+}, orderRoutes);
 
 // Basic route for testing
 app.get('/', (req, res) => {
@@ -35,7 +75,10 @@ app.get('/', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ message: "Something went wrong!", error: err.message });
+    res.status(500).json({ 
+        message: "Something went wrong!", 
+        error: err.message 
+    });
 });
 
 // For local development
@@ -44,6 +87,5 @@ if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 }
 
-// Export for Vercel
 module.exports = app;
 
