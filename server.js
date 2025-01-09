@@ -34,11 +34,7 @@ if (!process.env.JWT_SECRET) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-    origin: [
-        "http://localhost:3000",
-        "https://your-frontend-domain.vercel.app",
-        /\.vercel\.app$/  // This will allow all vercel.app subdomains
-    ],
+    origin: "*",  // Allow all origins for now
     credentials: true
 }));
 
