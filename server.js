@@ -13,7 +13,11 @@ const orderRoutes = require('./routes/orderRoutes');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
-    origin: "*",
+    origin: [
+        "http://localhost:3000",
+        "https://ecomern-frontend.vercel.app",
+        /\.vercel\.app$/
+    ],
     credentials: true
 }));
 
