@@ -16,6 +16,8 @@ app.use(cors({
     origin: [
         "http://localhost:3000",
         "https://ecomern-frontend.vercel.app",
+        "https://mavenmart.com",
+        "https://www.mavenmart.com",
         /\.vercel\.app$/
     ],
     credentials: true
