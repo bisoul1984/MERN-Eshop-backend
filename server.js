@@ -15,8 +15,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({
     origin: [
         "http://localhost:3000",
-        "https://ecomern-frontend.vercel.app",
-        /\.vercel\.app$/
+        "https://ecomern-frontend-b66i.vercel.app",
+        /\.vercel\.app$/,
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
