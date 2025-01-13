@@ -16,10 +16,11 @@ app.use(cors({
     origin: [
         "http://localhost:3000",
         "https://ecomern-frontend-b66i.vercel.app",
-        /\.vercel\.app$/,
+        /\.vercel\.app$/
     ],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // MongoDB connection
@@ -90,6 +91,14 @@ app.get('/api', (req, res) => {
             users: "/api/users",
             orders: "/api/orders"
         }
+    });
+});
+
+// Add this after your other routes
+app.get('/api/test', (req, res) => {
+    res.json({ 
+        message: "API is working",
+        timestamp: new Date().toISOString()
     });
 });
 
