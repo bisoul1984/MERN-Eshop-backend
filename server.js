@@ -16,11 +16,10 @@ app.use(cors({
     origin: [
         "http://localhost:3000",
         "https://ecomern-frontend.vercel.app",
-        "https://mavenmart.com",
-        "https://www.mavenmart.com",
         /\.vercel\.app$/
     ],
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
 }));
 
 // MongoDB connection
@@ -80,6 +79,18 @@ app.use('/api/orders', async (req, res, next) => {
 // Basic route for testing
 app.get('/', (req, res) => {
     res.json({ message: "API is working" });
+});
+
+// Add this after your other routes
+app.get('/api', (req, res) => {
+    res.json({ 
+        message: "API is working",
+        endpoints: {
+            products: "/api/products",
+            users: "/api/users",
+            orders: "/api/orders"
+        }
+    });
 });
 
 // Error handling middleware
