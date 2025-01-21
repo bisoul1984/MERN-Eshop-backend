@@ -1,105 +1,133 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
-const cartSchema = {
-    total: { type: Number, default: 0 },
-    count: { type: Number, default: 0 },
-    items: {
-        type: Map,
-        of: {
-            quantity: Number,
-            product: {
-                _id: mongoose.Schema.Types.ObjectId,
-                name: String,
-                price: Number,
-                pictures: [{
-                    url: String,
-                    public_id: String
-                }]
-            }
-        },
-        default: {}
-    }
-};
-
-const UserSchema = mongoose.Schema({
+const userSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: [true, 'is required']
+        required: [true, 'Name is required']
     },
     email: {
         type: String,
-        required: [true, 'is required'],
+        required: [true, 'Email is required'],
         unique: true,
-        index: true,
-        validate: {
-            validator: function(str) {
-                return /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g.test(str);
-            },
-            message: props => `${props.value} is not a valid email`
-        }
+        lowercase: true,
+        trim: true
     },
     password: {
         type: String,
-        required: [true, 'is required']
+        required: [true, 'Password is required']
     },
     isAdmin: {
         type: Boolean,
         default: false
     },
     cart: {
-        type: Object,
-        default: () => ({
-            total: 0,
-            count: 0,
-            items: {}
-        })
+        items: {
+            type: Object,
+            default: {}
+        },
+        total: { type: Number, default: 0 },
+        count: { type: Number, default: 0 }
     },
-    notifications: {
-        type: Array,
-        default: []
+    orders: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Order'
+    }]
+}, { timestamps: true });
+
+// Hash password before saving
+userSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
+    
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
     }
-}, {minimize: false});
-
-UserSchema.pre('save', function(next) {
-    const user = this;
-    if(!user.isModified('password')) return next();
-
-    bcrypt.genSalt(10, function(err, salt) {
-        if(err) return next(err);
-
-        bcrypt.hash(user.password, salt, function(err, hash) {
-            if(err) return next(err);
-
-            user.password = hash;
-            next();
-        });
-    });
 });
 
-UserSchema.methods.updateCart = function(productId, price) {
+// Add to cart method
+userSchema.methods.addToCart = async function(productId, product) {
+    console.log('=== Adding to Cart ===');
+    console.log('Current cart:', this.cart);
+    console.log('Product to add:', { productId, product });
+
+    // Initialize cart if it doesn't exist
     if (!this.cart) {
-        this.cart = { total: 0, count: 0 };
+        console.log('Initializing new cart');
+        this.cart = {
+            items: {},
+            total: 0,
+            count: 0
+        };
     }
 
-    if (this.cart[productId]) {
-        this.cart[productId] += 1;
+    // Add or update item in cart
+    if (this.cart.items[productId]) {
+        console.log('Updating existing item quantity');
+        this.cart.items[productId].quantity += 1;
     } else {
-        this.cart[productId] = 1;
+        console.log('Adding new item to cart');
+        this.cart.items[productId] = {
+            quantity: 1,
+            product: {
+                _id: product._id,
+                name: product.name,
+                price: product.price,
+                image: product.image,
+                category: product.category
+            }
+        };
     }
 
-    const cartItems = Object.keys(this.cart).filter(key => 
-        key !== 'total' && key !== 'count'
-    );
+    // Update cart totals
+    this.cart.count = Object.values(this.cart.items)
+        .reduce((sum, item) => sum + item.quantity, 0);
+    
+    this.cart.total = Object.values(this.cart.items)
+        .reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
 
-    this.cart.count = cartItems.length;
-    this.cart.total = cartItems.reduce((acc, key) => {
-        return acc + (this.cart[key] * Number(price));
-    }, 0);
+    console.log('Updated cart:', this.cart);
 
+    // Mark cart as modified
     this.markModified('cart');
-    return this;
+    
+    // Save and return the updated user
+    const savedUser = await this.save();
+    console.log('Saved user cart:', savedUser.cart);
+    return savedUser;
 };
 
-const User = mongoose.model('User', UserSchema);
+// Add removeFromCart method
+userSchema.methods.removeFromCart = async function(productId) {
+    try {
+        // Initialize cart if needed
+        if (!this.cart || !this.cart.items) {
+            this.cart = { items: {}, total: 0, count: 0 };
+        }
+
+        // Check if item exists in cart
+        if (this.cart.items[productId]) {
+            // Remove the item
+            delete this.cart.items[productId];
+
+            // Recalculate totals
+            const items = Object.values(this.cart.items);
+            this.cart.count = items.reduce((sum, item) => sum + item.quantity, 0);
+            this.cart.total = items.reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
+
+            // Mark as modified and save
+            this.markModified('cart');
+            return await this.save();
+        }
+        return this;
+    } catch (error) {
+        console.error('Error removing from cart:', error);
+        throw error;
+    }
+};
+
+const User = mongoose.model('User', userSchema);
 module.exports = User; 

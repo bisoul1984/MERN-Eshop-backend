@@ -1,27 +1,29 @@
 const mongoose = require('mongoose');
 
-const ProductSchema = mongoose.Schema({
+const productSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: [true, 'is required']
+        required: true
     },
     description: {
         type: String,
-        required: [true, 'is required']
+        required: true
     },
     price: {
-        type: String,
-        required: [true, 'is required']
+        type: Number,
+        required: true
     },
     category: {
         type: String,
-        required: [true, 'is required']
+        required: true
     },
-    pictures: {
-        type: Array,
+    image: {
+        type: String,
         required: true
     }
-}, {minimize: false});
+}, {
+    timestamps: true
+});
 
-const Product = mongoose.model('Product', ProductSchema);
-module.exports = Product; 
+// Export the model only if it hasn't been compiled yet
+module.exports = mongoose.models.Product || mongoose.model('Product', productSchema); 
