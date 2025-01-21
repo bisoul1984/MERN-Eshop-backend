@@ -28,29 +28,49 @@ app.use((req, res, next) => {
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 
-// Connect to MongoDB with more detailed error handling
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000
-})
-.then(() => {
-    console.log('Connected to MongoDB');
-})
-.catch(err => {
-    console.error('MongoDB connection error:', err);
-});
+// MongoDB connection with retry logic
+const connectDB = async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 5000,
+            retryWrites: true,
+            w: 'majority'
+        });
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+        // Retry connection after 5 seconds
+        setTimeout(connectDB, 5000);
+    }
+};
+
+connectDB();
 
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);
-    res.status(500).json({ message: 'Something went wrong!', error: err.message });
+    res.status(500).json({ 
+        message: 'Something went wrong!', 
+        error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message 
+    });
 });
 
 // Handle 404 routes
 app.use((req, res) => {
     console.log('404 for:', req.method, req.url);
     res.status(404).json({ message: `Route not found: ${req.method} ${req.url}` });
+});
+
+// Handle MongoDB connection errors
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected. Attempting to reconnect...');
+    connectDB();
 });
 
 module.exports = app; 
