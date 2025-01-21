@@ -1,6 +1,12 @@
 const app = require('./app');
-const PORT = process.env.PORT || 8081;
+const port = process.env.PORT || 8081;
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+// For Vercel serverless deployment
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+    });
+}
+
+// Export the app for Vercel
+module.exports = app;
