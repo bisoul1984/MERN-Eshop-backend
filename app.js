@@ -9,7 +9,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: '*', // For development, update this for production
     credentials: true
 }));
 app.use(express.json());
@@ -20,6 +20,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Basic health check route
+app.get('/', (req, res) => {
+    res.json({ message: 'API is running' });
+});
+
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
@@ -27,16 +32,6 @@ app.use('/api/products', productRoutes);
 // Test route
 app.get('/api/test', (req, res) => {
     res.json({ message: 'API is working' });
-});
-
-// 404 handler - make sure this is after all routes
-app.use((req, res) => {
-    console.log(`404 Not Found: ${req.method} ${req.url}`);
-    res.status(404).json({ 
-        message: 'Route not found',
-        path: req.url,
-        method: req.method 
-    });
 });
 
 // MongoDB connection with retry logic
@@ -57,14 +52,25 @@ const connectDB = async () => {
     }
 };
 
+// Initialize MongoDB connection
 connectDB();
 
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err);
     res.status(500).json({ 
-        message: 'Something went wrong!', 
-        error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message 
+        message: 'Something went wrong!',
+        error: err.message
+    });
+});
+
+// 404 handler - make sure this is after all routes
+app.use((req, res) => {
+    console.log(`404 Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+        message: 'Route not found',
+        path: req.url,
+        method: req.method 
     });
 });
 
@@ -78,4 +84,5 @@ mongoose.connection.on('disconnected', () => {
     connectDB();
 });
 
-module.exports = app; 
+// Export the app
+module.exports = app;
