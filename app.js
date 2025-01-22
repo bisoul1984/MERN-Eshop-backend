@@ -1,42 +1,10 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const userRoutes = require('./routes/userRoutes');
-const productRoutes = require('./routes/productRoutes');
-require('dotenv').config();
-
-const app = express();
-
-// Middleware
-app.use(cors({
-    origin: '*', // For development, update this for production
-    credentials: true
-}));
-app.use(express.json());
-
-// Debug middleware
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
-
-// Basic health check route
-app.get('/', (req, res) => {
-    res.json({ message: 'API is running' });
-});
-
-// Routes
-app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
-
-// Test route
-app.get('/api/test', (req, res) => {
-    res.json({ message: 'API is working' });
-});
-
 // MongoDB connection with retry logic
 const connectDB = async () => {
     try {
+        if (!process.env.MONGODB_URI) {
+            throw new Error('MONGODB_URI is not defined');
+        }
+        
         await mongoose.connect(process.env.MONGODB_URI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
@@ -47,42 +15,15 @@ const connectDB = async () => {
         console.log('Connected to MongoDB');
     } catch (err) {
         console.error('MongoDB connection error:', err);
-        // Retry connection after 5 seconds
+        // In production, we might want to exit
+        if (process.env.NODE_ENV === 'production') {
+            console.error('Fatal error: Could not connect to MongoDB');
+            process.exit(1);
+        }
+        // In development, retry
         setTimeout(connectDB, 5000);
     }
 };
 
 // Initialize MongoDB connection
-connectDB();
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Error:', err);
-    res.status(500).json({ 
-        message: 'Something went wrong!',
-        error: err.message
-    });
-});
-
-// 404 handler - make sure this is after all routes
-app.use((req, res) => {
-    console.log(`404 Not Found: ${req.method} ${req.url}`);
-    res.status(404).json({ 
-        message: 'Route not found',
-        path: req.url,
-        method: req.method 
-    });
-});
-
-// Handle MongoDB connection errors
-mongoose.connection.on('error', (err) => {
-    console.error('MongoDB connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected. Attempting to reconnect...');
-    connectDB();
-});
-
-// Export the app
-module.exports = app;
+connectDB().catch(console.error);
