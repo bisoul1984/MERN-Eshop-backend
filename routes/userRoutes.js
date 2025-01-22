@@ -21,45 +21,44 @@ router.post('/signup', async (req, res) => {
 // Login route
 router.post('/login', async (req, res) => {
     try {
+        console.log('Login attempt:', req.body);
         const { email, password } = req.body;
-        console.log('Login attempt for:', email); // Debug log
+        
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Please provide email and password' });
+        }
 
         const user = await User.findOne({ email });
         if (!user) {
-            console.log('User not found:', email); // Debug log
-            return res.status(400).json({ message: "User not found" });
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            console.log('Invalid password for:', email); // Debug log
-            return res.status(400).json({ message: "Invalid credentials" });
+        // Initialize cart if it doesn't exist
+        if (!user.cart) {
+            user.cart = {
+                items: new Map(),
+                total: 0,
+                count: 0
+            };
+            await user.save();
         }
 
-        const token = jwt.sign(
-            { 
-                _id: user._id,
-                email: user.email,
-                isAdmin: user.isAdmin 
-            }, 
-            process.env.JWT_SECRET
-        );
+        // Generate token
+        const token = user.generateAuthToken();
 
-        console.log('Login successful for:', email); // Debug log
+        // Convert Map to Object for JSON response
+        const userObject = user.toObject();
+        if (userObject.cart && userObject.cart.items instanceof Map) {
+            userObject.cart.items = Object.fromEntries(userObject.cart.items);
+        }
 
         res.json({
             token,
-            user: {
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-                isAdmin: user.isAdmin,
-                cart: user.cart,
-            }
+            user: userObject
         });
     } catch (error) {
-        console.error('Login error:', error); // Debug log
-        res.status(500).json({ message: "Login failed: " + error.message });
+        console.error('Login error:', error);
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -145,77 +144,33 @@ router.post('/register', async (req, res) => {
 });
 
 // Add to cart
-router.post('/add-to-cart', auth, async (req, res) => {
+router.post('/add-to-cart', async (req, res) => {
     try {
-        const { userId, productId } = req.body;
-        console.log('Add to cart request:', { userId, productId });
+        const { userId, productId, quantity } = req.body;
+        console.log('Add to cart request:', { userId, productId, quantity });
 
-        // Verify the user is modifying their own cart
-        if (userId !== req.user._id.toString()) {
-            return res.status(403).json({ message: "Not authorized to modify this cart" });
-        }
-
+        // Find user
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
+        // Find product
         const product = await Product.findById(productId);
         if (!product) {
             return res.status(404).json({ message: "Product not found" });
         }
 
-        // Initialize cart if it doesn't exist or if items is undefined
-        if (!user.cart || !user.cart.items) {
-            user.cart = {
-                items: new Map(),
-                total: 0,
-                count: 0
-            };
+        // Add to cart
+        await user.addToCart(productId, product);
+
+        // Convert Map to Object for response
+        const cartData = user.cart.toObject();
+        if (cartData.items instanceof Map) {
+            cartData.items = Object.fromEntries(cartData.items);
         }
 
-        // Convert cart items to Map if it's not already
-        if (!(user.cart.items instanceof Map)) {
-            user.cart.items = new Map(Object.entries(user.cart.items));
-        }
-
-        // Add or update item in cart
-        const existingItem = user.cart.items.get(productId);
-        if (existingItem) {
-            existingItem.quantity += 1;
-        } else {
-            user.cart.items.set(productId, {
-                quantity: 1,
-                product: {
-                    _id: product._id,
-                    name: product.name,
-                    price: product.price,
-                    image: product.image,
-                    category: product.category
-                }
-            });
-        }
-
-        // Update cart totals
-        const cartItems = Array.from(user.cart.items.values());
-        user.cart.count = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-        user.cart.total = cartItems.reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
-
-        // Mark cart as modified
-        user.markModified('cart');
-
-        // Save and return updated cart
-        await user.save();
-        
-        // Convert Map to plain object for response
-        const cartResponse = {
-            items: Object.fromEntries(user.cart.items),
-            total: user.cart.total,
-            count: user.cart.count
-        };
-
-        res.json(cartResponse);
-
+        res.json(cartData);
     } catch (error) {
         console.error('Add to cart error:', error);
         res.status(500).json({ message: error.message });
@@ -223,54 +178,24 @@ router.post('/add-to-cart', auth, async (req, res) => {
 });
 
 // Remove from cart
-router.delete('/remove-from-cart', auth, async (req, res) => {
+router.delete('/remove-from-cart', async (req, res) => {
     try {
         const { userId, productId } = req.body;
         console.log('Remove from cart request:', { userId, productId });
 
-        // Verify user authorization
-        if (userId !== req.user._id.toString()) {
-            return res.status(403).json({ message: "Not authorized to modify this cart" });
-        }
-
+        // Find user
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
 
-        // Initialize cart if needed
-        if (!user.cart || !user.cart.items) {
-            user.cart = { items: {}, total: 0, count: 0 };
-        }
+        // Remove from cart and get cart data
+        const cartData = await user.removeFromCart(productId);
 
-        console.log('Current cart:', {
-            items: Object.keys(user.cart.items),
-            productToRemove: productId
-        });
-
-        // Check if item exists
-        if (!user.cart.items[productId]) {
-            return res.status(404).json({ message: "Item not found in cart" });
-        }
-
-        // Remove item and update cart
-        delete user.cart.items[productId];
-
-        // Recalculate totals
-        const items = Object.values(user.cart.items);
-        user.cart.count = items.reduce((sum, item) => sum + item.quantity, 0);
-        user.cart.total = items.reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
-
-        // Mark as modified and save
-        user.markModified('cart');
-        await user.save();
-
-        console.log('Updated cart:', user.cart);
-        res.json(user.cart);
-
+        res.json(cartData);
     } catch (error) {
         console.error('Remove from cart error:', error);
-        res.status(500).json({ message: "Error removing item from cart" });
+        res.status(400).json({ message: error.message });
     }
 });
 

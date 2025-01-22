@@ -5,13 +5,13 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    description: {
-        type: String,
-        required: true
-    },
     price: {
         type: Number,
         required: true
+    },
+    description: {
+        type: String,
+        default: ''
     },
     category: {
         type: String,
@@ -25,5 +25,6 @@ const productSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Export the model only if it hasn't been compiled yet
-module.exports = mongoose.models.Product || mongoose.model('Product', productSchema); 
+const Product = mongoose.model('Product', productSchema);
+
+module.exports = Product; 

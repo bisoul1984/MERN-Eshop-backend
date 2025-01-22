@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -23,11 +24,27 @@ const userSchema = new mongoose.Schema({
     },
     cart: {
         items: {
-            type: Object,
-            default: {}
+            type: Map,
+            of: {
+                quantity: Number,
+                product: {
+                    _id: String,
+                    name: String,
+                    price: Number,
+                    image: String,
+                    category: String
+                }
+            },
+            default: new Map()
         },
-        total: { type: Number, default: 0 },
-        count: { type: Number, default: 0 }
+        total: {
+            type: Number,
+            default: 0
+        },
+        count: {
+            type: Number,
+            default: 0
+        }
     },
     orders: [{
         type: mongoose.Schema.Types.ObjectId,
@@ -48,6 +65,29 @@ userSchema.pre('save', async function(next) {
     }
 });
 
+// Add password comparison method
+userSchema.methods.comparePassword = async function(candidatePassword) {
+    try {
+        return await bcrypt.compare(candidatePassword, this.password);
+    } catch (error) {
+        throw new Error(error);
+    }
+};
+
+// Add token generation method
+userSchema.methods.generateAuthToken = function() {
+    const token = jwt.sign(
+        { 
+            _id: this._id,
+            email: this.email,
+            isAdmin: this.isAdmin 
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
+    return token;
+};
+
 // Add to cart method
 userSchema.methods.addToCart = async function(productId, product) {
     console.log('=== Adding to Cart ===');
@@ -58,19 +98,20 @@ userSchema.methods.addToCart = async function(productId, product) {
     if (!this.cart) {
         console.log('Initializing new cart');
         this.cart = {
-            items: {},
+            items: new Map(),
             total: 0,
             count: 0
         };
     }
 
     // Add or update item in cart
-    if (this.cart.items[productId]) {
+    if (this.cart.items.has(productId)) {
         console.log('Updating existing item quantity');
-        this.cart.items[productId].quantity += 1;
+        const item = this.cart.items.get(productId);
+        item.quantity += 1;
     } else {
         console.log('Adding new item to cart');
-        this.cart.items[productId] = {
+        this.cart.items.set(productId, {
             quantity: 1,
             product: {
                 _id: product._id,
@@ -79,15 +120,15 @@ userSchema.methods.addToCart = async function(productId, product) {
                 image: product.image,
                 category: product.category
             }
-        };
+        });
     }
 
     // Update cart totals
-    this.cart.count = Object.values(this.cart.items)
-        .reduce((sum, item) => sum + item.quantity, 0);
-    
-    this.cart.total = Object.values(this.cart.items)
-        .reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
+    this.cart.count = this.cart.items.size;
+    this.cart.total = 0;
+    this.cart.items.forEach((item) => {
+        this.cart.total += item.quantity * item.product.price;
+    });
 
     console.log('Updated cart:', this.cart);
 
@@ -103,28 +144,62 @@ userSchema.methods.addToCart = async function(productId, product) {
 // Add removeFromCart method
 userSchema.methods.removeFromCart = async function(productId) {
     try {
+        console.log('Removing product from cart:', productId);
+        console.log('Current cart:', this.cart);
+
         // Initialize cart if needed
         if (!this.cart || !this.cart.items) {
-            this.cart = { items: {}, total: 0, count: 0 };
+            this.cart = {
+                items: new Map(),
+                total: 0,
+                count: 0
+            };
         }
 
-        // Check if item exists in cart
-        if (this.cart.items[productId]) {
-            // Remove the item
-            delete this.cart.items[productId];
-
-            // Recalculate totals
-            const items = Object.values(this.cart.items);
-            this.cart.count = items.reduce((sum, item) => sum + item.quantity, 0);
-            this.cart.total = items.reduce((sum, item) => sum + (item.quantity * item.product.price), 0);
-
-            // Mark as modified and save
-            this.markModified('cart');
-            return await this.save();
+        // Convert items to Map if it's an object
+        if (!(this.cart.items instanceof Map)) {
+            // If it's an object, convert it to Map
+            const itemsObject = this.cart.items;
+            this.cart.items = new Map();
+            Object.keys(itemsObject).forEach(key => {
+                this.cart.items.set(key, itemsObject[key]);
+            });
         }
-        return this;
+
+        // Check if item exists
+        if (!this.cart.items.has(productId)) {
+            throw new Error('Item not found in cart');
+        }
+
+        // Remove item
+        this.cart.items.delete(productId);
+
+        // Update totals
+        let total = 0;
+        let count = 0;
+        this.cart.items.forEach((item) => {
+            total += item.quantity * item.product.price;
+            count += item.quantity;
+        });
+
+        this.cart.total = total;
+        this.cart.count = count;
+
+        // Mark as modified and save
+        this.markModified('cart');
+        await this.save();
+
+        // Convert Map back to object for response
+        const cartData = {
+            items: Object.fromEntries(this.cart.items),
+            total: this.cart.total,
+            count: this.cart.count
+        };
+
+        console.log('Updated cart after removal:', cartData);
+        return cartData;  // Return the object version, not this
     } catch (error) {
-        console.error('Error removing from cart:', error);
+        console.error('Error in removeFromCart:', error);
         throw error;
     }
 };

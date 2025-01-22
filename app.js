@@ -9,24 +9,35 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'https://e-shop-frontend.vercel.app'
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    origin: 'http://localhost:3000',
+    credentials: true
 }));
 app.use(express.json());
 
 // Debug middleware
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
     next();
 });
 
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
+
+// Test route
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'API is working' });
+});
+
+// 404 handler - make sure this is after all routes
+app.use((req, res) => {
+    console.log(`404 Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+        message: 'Route not found',
+        path: req.url,
+        method: req.method 
+    });
+});
 
 // MongoDB connection with retry logic
 const connectDB = async () => {
@@ -55,12 +66,6 @@ app.use((err, req, res, next) => {
         message: 'Something went wrong!', 
         error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message 
     });
-});
-
-// Handle 404 routes
-app.use((req, res) => {
-    console.log('404 for:', req.method, req.url);
-    res.status(404).json({ message: `Route not found: ${req.method} ${req.url}` });
 });
 
 // Handle MongoDB connection errors
